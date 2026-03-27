@@ -47,6 +47,21 @@ type Supplement = {
   goals: Goal[];
   timing: string;
   cautionFlags: Flag[];
+  bestFor: string;
+  brief: string;
+};
+
+type RankedResult = {
+  key: SupplementKey;
+  name: string;
+  timing: string;
+  why: string;
+  caution: boolean;
+  cautionText: string | null;
+  score: number;
+  fitLabel: string;
+  bestFor: string;
+  brief: string;
 };
 
 const GOALS: { value: Goal; label: string; short: string }[] = [
@@ -79,30 +94,40 @@ const SUPPLEMENTS: Record<SupplementKey, Supplement> = {
     goals: ['stay_asleep', 'wind_down', 'recovery', 'fall_asleep_faster'],
     timing: 'Usually explored 1 to 2 hours before bed.',
     cautionFlags: ['kidney', 'meds'],
+    bestFor: 'evening support and a smoother wind-down routine',
+    brief: 'Often used as a simple evening option when the goal is steadier support rather than a heavy stack.',
   },
   glycine: {
     name: 'Glycine',
     goals: ['stay_asleep', 'recovery', 'wind_down'],
     timing: 'Usually explored 30 to 60 minutes before bed.',
     cautionFlags: ['meds'],
+    bestFor: 'simple evening routines and overnight stability support',
+    brief: 'A minimalist choice that fits users who want a narrower, cleaner evening option.',
   },
   melatonin: {
     name: 'Melatonin',
     goals: ['fall_asleep_faster', 'travel_shift'],
     timing: 'Usually explored 30 to 120 minutes before intended sleep, depending on the use case.',
     cautionFlags: ['pregnancy', 'meds', 'autoimmune', 'mood'],
+    bestFor: 'timing-sensitive goals like sleep onset or schedule shifts',
+    brief: 'Best treated as a timing tool, especially when the main issue is schedule alignment.',
   },
   theanine: {
     name: 'L-theanine',
     goals: ['wind_down', 'fall_asleep_faster', 'recovery', 'travel_shift'],
     timing: 'Usually explored 30 to 60 minutes before bed.',
     cautionFlags: ['meds'],
+    bestFor: 'mental overactivation and pre-sleep calm',
+    brief: 'Often selected when the user sounds overstimulated or mentally “on” at night.',
   },
   apigenin: {
     name: 'Apigenin',
     goals: ['wind_down', 'stay_asleep'],
     timing: 'Usually explored 30 to 60 minutes before bed.',
     cautionFlags: ['pregnancy', 'meds'],
+    bestFor: 'optional add-on support in wind-down focused routines',
+    brief: 'Better positioned as an optional add-on than as the entire strategy.',
   },
 };
 
@@ -131,31 +156,23 @@ function getScore(key: SupplementKey, form: FormState): number {
 
   if (form.goal === 'fall_asleep_faster' && key === 'melatonin') score += 20;
   if (form.goal === 'fall_asleep_faster' && key === 'theanine') score += 10;
-
   if (form.goal === 'stay_asleep' && key === 'magnesium') score += 20;
   if (form.goal === 'stay_asleep' && key === 'glycine') score += 15;
   if (form.goal === 'stay_asleep' && key === 'apigenin') score += 8;
-
   if (form.goal === 'wind_down' && key === 'theanine') score += 18;
   if (form.goal === 'wind_down' && key === 'magnesium') score += 15;
-
   if (form.goal === 'travel_shift' && key === 'melatonin') score += 25;
   if (form.goal === 'travel_shift' && key === 'theanine') score += 5;
-
   if (form.goal === 'recovery' && key === 'magnesium') score += 15;
   if (form.goal === 'recovery' && key === 'glycine') score += 12;
 
   if (form.issues.includes('racing_mind') && key === 'theanine') score += 18;
   if (form.issues.includes('racing_mind') && key === 'magnesium') score += 8;
-
   if (form.issues.includes('multiple_awakenings') && key === 'magnesium') score += 12;
   if (form.issues.includes('multiple_awakenings') && key === 'glycine') score += 12;
-
   if ((form.issues.includes('schedule_shift') || form.issues.includes('jet_lag')) && key === 'melatonin') score += 18;
-
   if (form.issues.includes('late_caffeine') && key === 'theanine') score += 10;
   if (form.issues.includes('late_caffeine') && key === 'magnesium') score += 5;
-
   if (form.screenExposure === 'high' && key === 'theanine') score += 8;
   if (form.screenExposure === 'high' && key === 'magnesium') score += 4;
 
@@ -169,20 +186,35 @@ function getWhy(key: SupplementKey, form: FormState): string {
   if (key === 'melatonin' && form.goal === 'travel_shift') {
     return 'Your answers point more toward schedule adjustment and timing than a broader evening stack.';
   }
-
   if (key === 'theanine' && form.issues.includes('racing_mind')) {
     return 'Your answers suggest pre-sleep mental overactivation may be part of the problem.';
   }
-
   if (key === 'magnesium' && form.issues.includes('multiple_awakenings')) {
     return 'Your plan should lean toward steadier evening support rather than only sleep-onset support.';
   }
-
   if (key === 'glycine') {
     return 'A simpler evening option may fit your pattern better than a more complex stack.';
   }
-
   return 'This option matched your goal and routine better than the other choices.';
+}
+
+function getFitLabel(score: number): string {
+  if (score >= 58) return 'Strong match';
+  if (score >= 40) return 'Good fit';
+  return 'Possible fit';
+}
+
+function getCautionText(supplement: Supplement, form: FormState): string | null {
+  const triggered = supplement.cautionFlags.filter((flag) => form.flags.includes(flag));
+  if (!triggered.length) return null;
+
+  if (triggered.includes('meds')) return 'Because you reported prescription medication use, review this option with a clinician first.';
+  if (triggered.includes('pregnancy')) return 'Because you reported pregnancy, trying to conceive, or breastfeeding, this should move to clinician review.';
+  if (triggered.includes('kidney')) return 'Because you reported kidney concerns or mineral restrictions, this should move to clinician review.';
+  if (triggered.includes('autoimmune')) return 'Because you reported immune-related concerns, use clinician review before using this option.';
+  if (triggered.includes('mood')) return 'Because you reported mood, psychiatric, or neurological concerns, clinician review makes more sense first.';
+
+  return 'Clinician review makes more sense before using this option.';
 }
 
 function getLifestyleFixes(form: FormState): string[] {
@@ -199,11 +231,24 @@ function getLifestyleFixes(form: FormState): string[] {
   return fixes.slice(0, 3);
 }
 
+function getSummary(form: FormState): string {
+  const map: Record<Exclude<Goal, ''>, string> = {
+    fall_asleep_faster: 'Your result should lean toward sleep-onset timing, not random stacking.',
+    stay_asleep: 'Your result should prioritize steadier evening support and overnight stability.',
+    wind_down: 'Your result should focus on pre-bed calm and lower evening stimulation.',
+    travel_shift: 'Your result should focus on timing and schedule adjustment first.',
+    recovery: 'Your result should support next-day readiness without overcomplicating the routine.',
+  };
+
+  return form.goal ? map[form.goal] : 'Your result should stay simple and timing-focused.';
+}
+
 function buildResults(form: FormState) {
-  const ranked = (Object.keys(SUPPLEMENTS) as SupplementKey[])
+  const ranked: RankedResult[] = (Object.keys(SUPPLEMENTS) as SupplementKey[])
     .map((key) => {
       const supplement = SUPPLEMENTS[key];
       const caution = supplement.cautionFlags.some((flag) => form.flags.includes(flag));
+      const score = getScore(key, form);
 
       return {
         key,
@@ -211,7 +256,11 @@ function buildResults(form: FormState) {
         timing: supplement.timing,
         why: getWhy(key, form),
         caution,
-        score: getScore(key, form),
+        cautionText: getCautionText(supplement, form),
+        score,
+        fitLabel: getFitLabel(score),
+        bestFor: supplement.bestFor,
+        brief: supplement.brief,
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -220,7 +269,26 @@ function buildResults(form: FormState) {
     top: ranked.filter((item) => !item.caution).slice(0, 3),
     caution: ranked.filter((item) => item.caution),
     fixes: getLifestyleFixes(form),
+    summary: getSummary(form),
   };
+}
+
+function getGoalLabel(goal: Goal): string {
+  return GOALS.find((item) => item.value === goal)?.label || 'Not selected';
+}
+
+function getIssueLabels(values: Issue[]): string {
+  if (!values.length) return 'No extra pattern selected';
+  return ISSUES.filter((item) => values.includes(item.value))
+    .map((item) => item.label)
+    .join(' • ');
+}
+
+function getFlagLabels(values: Flag[]): string {
+  if (!values.length) return 'No caution flags selected';
+  return FLAGS.filter((item) => values.includes(item.value))
+    .map((item) => item.label)
+    .join(' • ');
 }
 
 function ShellCard({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -333,6 +401,15 @@ function ToggleRow({
   );
 }
 
+function SnapshotRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-300">{label}</div>
+      <div className="mt-2 text-sm leading-6 text-slate-200">{value}</div>
+    </div>
+  );
+}
+
 export default function Page() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
@@ -344,7 +421,6 @@ export default function Page() {
     step === 3 ||
     step === 4;
 
-  
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#071225] text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(17,117,166,0.24),transparent_28%),radial-gradient(circle_at_80%_18%,rgba(28,202,201,0.12),transparent_16%),linear-gradient(180deg,#071225_0%,#08162b_54%,#061123_100%)]" />
@@ -563,7 +639,19 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="mb-6 rounded-[24px] border border-cyan-400/15 bg-[linear-gradient(180deg,rgba(8,27,49,0.95),rgba(6,19,35,0.92))] p-5">
+                  <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">Summary</div>
+                  <p className="mt-3 text-base leading-7 text-slate-200">{results.summary}</p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <SnapshotRow label="Goal" value={getGoalLabel(form.goal)} />
+                  <SnapshotRow label="Timing window" value={`${form.bedtime || '—'} to ${form.wakeTime || '—'}`} />
+                  <SnapshotRow label="Patterns" value={getIssueLabels(form.issues)} />
+                  <SnapshotRow label="Caution flags" value={getFlagLabels(form.flags)} />
+                </div>
+
+                <div className="mt-6 space-y-4">
                   {results.top.map((item, index) => (
                     <div
                       key={item.key}
@@ -575,13 +663,19 @@ export default function Page() {
                           <h3 className="mt-2 text-xl font-semibold">{item.name}</h3>
                         </div>
                         <div className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-200">
-                          Strong match
+                          {item.fitLabel}
                         </div>
                       </div>
                       <p className="mb-3 text-slate-300">{item.why}</p>
-                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-100">
-                        <span className="font-semibold text-white">Timing:</span> {item.timing}
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-100">
+                          <span className="font-semibold text-white">Timing:</span> {item.timing}
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-100">
+                          <span className="font-semibold text-white">Best fit for:</span> {item.bestFor}
+                        </div>
                       </div>
+                      <p className="mt-3 text-sm leading-6 text-slate-300">{item.brief}</p>
                     </div>
                   ))}
                 </div>
@@ -589,17 +683,12 @@ export default function Page() {
                 {results.caution.length > 0 && (
                   <div className="mt-6 rounded-[24px] border border-amber-400/25 bg-amber-400/10 p-5">
                     <div className="text-xs uppercase tracking-[0.24em] text-amber-200">Use extra caution</div>
-                    <p className="mt-3 text-sm text-amber-50/90">
-                      One or more of your answers suggest clinician review may make more sense before using certain options.
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-4 space-y-3">
                       {results.caution.map((item) => (
-                        <span
-                          key={item.key}
-                          className="rounded-full border border-amber-200/20 bg-amber-200/10 px-3 py-1.5 text-xs text-amber-100"
-                        >
-                          {item.name}
-                        </span>
+                        <div key={item.key} className="rounded-2xl border border-amber-200/15 bg-amber-200/5 p-4">
+                          <div className="font-medium text-amber-50">{item.name}</div>
+                          <div className="mt-2 text-sm leading-6 text-amber-50/90">{item.cautionText}</div>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -674,12 +763,12 @@ export default function Page() {
               <div className="mb-4 inline-flex items-center rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs uppercase tracking-[0.22em] text-cyan-300">
                 Next build steps
               </div>
-              <h3 className="text-2xl font-semibold">Ready for the next layer</h3>
+              <h3 className="text-2xl font-semibold">Next layer to add</h3>
               <div className="mt-6 space-y-3 text-sm text-slate-300">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">Add the final SleepMetric logo and icon set.</div>
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">Connect email capture and tagging.</div>
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">Add paid unlock or bundle logic.</div>
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">Insert affiliate product cards after results.</div>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">Add export or PDF delivery for the plan.</div>
               </div>
             </ShellCard>
           </div>
